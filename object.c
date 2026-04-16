@@ -213,62 +213,89 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
     char path[512];
     object_path(id, path, sizeof(path));
 
-    FILE *f = fopen(path, "rb");
-    if (!f) return -1;
+    FILE *fp = fopen(path, "rb");
+    if (!fp) return -1;
 
-    fseek(f, 0, SEEK_END);
-    long size = ftell(f);
-    rewind(f);
+    // Get file size
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    rewind(fp);
 
-    char *buffer = malloc(size);
+    if (file_size <= 0) {
+        fclose(fp);
+        return -1;
+    }
+
+    // Read entire file
+    char *buffer = malloc(file_size);
     if (!buffer) {
-        fclose(f);
+        fclose(fp);
         return -1;
     }
 
-    if (fread(buffer, 1, size, f) != (size_t)size) {
-        fclose(f);
+    if (fread(buffer, 1, file_size, fp) != (size_t)file_size) {
+        free(buffer);
+        fclose(fp);
+        return -1;
+    }
+    fclose(fp);
+
+    // Verify hash
+    ObjectID computed;
+    compute_hash(buffer, file_size, &computed);
+    if (memcmp(&computed, id, sizeof(ObjectID)) != 0) {
         free(buffer);
         return -1;
     }
-    fclose(f);
 
-    // verify hash
-    ObjectID check;
-    compute_hash(buffer, size, &check);
-    if (memcmp(check.hash, id->hash, HASH_SIZE) != 0) {
-        free(buffer);
-        return -1;
-    }
-
-    char *null_pos = memchr(buffer, '\0', size);
+    // Find header-data separator (\0)
+    char *null_pos = memchr(buffer, '\0', file_size);
     if (!null_pos) {
         free(buffer);
         return -1;
     }
 
-    // parse type
-    if (strncmp(buffer, "blob", 4) == 0) *type_out = OBJ_BLOB;
-    else if (strncmp(buffer, "tree", 4) == 0) *type_out = OBJ_TREE;
-    else if (strncmp(buffer, "commit", 6) == 0) *type_out = OBJ_COMMIT;
-    else {
+    size_t header_len = null_pos - buffer;
+    char *data_start = null_pos + 1;
+
+    // Parse header
+    char type_str[16];
+    size_t size;
+
+    if (sscanf(buffer, "%15s %zu", type_str, &size) != 2) {
         free(buffer);
         return -1;
     }
 
-    size_t header_len = (null_pos - buffer) + 1;
-    size_t data_len = size - header_len;
-
-    void *data = malloc(data_len);
-    if (!data) {
+    // Map string to enum
+    if (strcmp(type_str, "blob") == 0) {
+        *type_out = OBJ_BLOB;
+    } else if (strcmp(type_str, "tree") == 0) {
+        *type_out = OBJ_TREE;
+    } else if (strcmp(type_str, "commit") == 0) {
+        *type_out = OBJ_COMMIT;
+    } else {
         free(buffer);
         return -1;
     }
 
-    memcpy(data, buffer + header_len, data_len);
+    // Validate size
+    if ((size_t)(file_size - (header_len + 1)) != size) {
+        free(buffer);
+        return -1;
+    }
 
-    *data_out = data;
-    *len_out = data_len;
+    // Allocate and copy data
+    void *data_buf = malloc(size);
+    if (!data_buf) {
+        free(buffer);
+        return -1;
+    }
+
+    memcpy(data_buf, data_start, size);
+
+    *data_out = data_buf;
+    *len_out = size;
 
     free(buffer);
     return 0;
