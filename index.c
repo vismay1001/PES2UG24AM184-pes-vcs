@@ -198,7 +198,7 @@ int index_save(const Index *index) {
                 e->mtime,
                 e->size,
                 e->path);
-    }
+    }//new
 
     fclose(f);
     return 0;
