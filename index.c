@@ -27,14 +27,43 @@
 // ─── PROVIDED ────────────────────────────────────────────────────────────────
 
 // Find an index entry by path (linear scan).
-IndexEntry* index_find(Index *index, const char *path) {
-    for (int i = 0; i < index->count; i++) {
-        if (strcmp(index->entries[i].path, path) == 0)
-            return &index->entries[i];
-    }
-    return NULL;
-}
+#include "index.h"
+#include "pes.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
 
+// ─── LOAD INDEX ─────────────────────────────────────────────
+
+int index_load(Index *index) {
+    index->count = 0;
+
+    FILE *f = fopen(INDEX_FILE, "r");
+    if (!f) return 0; // empty index is OK
+
+    while (!feof(f)) {
+        IndexEntry e;
+
+        char hash_hex[HASH_HEX_SIZE + 1];
+
+        if (fscanf(f, "%o %s %ld %ld %s\n",
+                   &e.mode,
+                   hash_hex,
+                   &e.mtime,
+                   &e.size,
+                   e.path) != 5) {
+            break;
+        }
+
+        hex_to_hash(hash_hex, &e.hash);
+
+        index->entries[index->count++] = e;
+    }
+
+    fclose(f);
+    return 0;
+}
 // Remove a file from the index.
 // Returns 0 on success, -1 if path not in index.
 int index_remove(Index *index, const char *path) {
