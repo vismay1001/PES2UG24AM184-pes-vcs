@@ -180,11 +180,28 @@ int index_load(Index *index) {
 //   - rename                           : atomically moving the temp file over the old index
 //
 // Returns 0 on success, -1 on error.
+// ─── SAVE INDEX ─────────────────────────────────────────────
+
 int index_save(const Index *index) {
-    // TODO: Implement atomic index saving
-    // (See Lab Appendix for logical steps)
-    (void)index;
-    return -1;
+    FILE *f = fopen(INDEX_FILE, "w");
+    if (!f) return -1;
+
+    for (int i = 0; i < index->count; i++) {
+        const IndexEntry *e = &index->entries[i];
+
+        char hash_hex[HASH_HEX_SIZE + 1];
+        hash_to_hex(&e->hash, hash_hex);
+
+        fprintf(f, "%o %s %ld %ld %s\n",
+                e->mode,
+                hash_hex,
+                e->mtime,
+                e->size,
+                e->path);
+    }
+
+    fclose(f);
+    return 0;
 }
 
 // Stage a file for the next commit.
