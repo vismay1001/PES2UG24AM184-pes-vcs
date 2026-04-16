@@ -170,6 +170,7 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     close(fd);
 
     // Atomic rename
+    //final commit
     if (rename(temp_path, path) < 0) {
         unlink(temp_path);
         free(buffer);
